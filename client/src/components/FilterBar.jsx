@@ -1,4 +1,4 @@
-const STATUS_OPTIONS = ['Pending', 'In Transit', 'Customs', 'Delivered'];
+const STATUS_OPTIONS = ['Pending', 'In Transit', 'Customs', 'Out for Delivery','Delivered'];
 
 // Controlled by the parent (Dashboard) - this component just renders the
 // inputs and calls back up on change. Keeping filter STATE in the parent

@@ -16,9 +16,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Summary only needs to load once on mount - it's not affected by the
-  // list filters, since the cards show overall counts regardless of what's
-  // currently being searched/filtered in the table below.
   useEffect(() => {
     getShipmentSummary()
       .then(setSummary)
@@ -27,16 +24,21 @@ const Dashboard = () => {
       });
   }, []);
 
-  const fetchShipments = useCallback(() => {
-    setLoading(true);
-    setError('');
+  const fetchShipments = useCallback((silent = false) => {
+    // `silent` = background refresh: no loading flash, no error banner.
+    if (silent !== true) {
+      setLoading(true);
+      setError('');
+    }
     const params = {};
     if (filters.search) params.search = filters.search;
     if (filters.status) params.status = filters.status;
 
     getShipments(params)
       .then(setShipments)
-      .catch(() => setError('Failed to load shipments. Please try refreshing.'))
+      .catch(() => {
+        if (silent !== true) setError('Failed to load shipments. Please try refreshing.');
+      })
       .finally(() => setLoading(false));
   }, [filters]);
 
@@ -46,6 +48,17 @@ const Dashboard = () => {
   useEffect(() => {
     const timeout = setTimeout(fetchShipments, 300);
     return () => clearTimeout(timeout);
+  }, [fetchShipments]);
+
+  // Live refresh: dispatch sees customers' reschedule/instruction changes (and
+  // customers see status changes) without reloading. Skipped while the tab is hidden.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetchShipments(true);
+      getShipmentSummary().then(setSummary).catch(() => {});
+    }, 15000);
+    return () => clearInterval(timer);
   }, [fetchShipments]);
 
   return (
@@ -73,7 +86,7 @@ const Dashboard = () => {
 
         {error && <div className="alert-error">{error}</div>}
 
-        <ShipmentTable shipments={shipments} loading={loading} />
+        <ShipmentTable shipments={shipments} loading={loading} isAdmin={user?.role === 'admin'} />
       </div>
     </div>
   );

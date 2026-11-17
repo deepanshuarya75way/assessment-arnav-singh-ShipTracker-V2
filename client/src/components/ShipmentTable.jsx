@@ -10,7 +10,21 @@ const formatDate = (dateStr) => {
   });
 };
 
-const ShipmentTable = ({ shipments, loading }) => {
+const formatRequestDate = (dateStr)=>
+  new Date(dateStr).toLocaleDateString('en-US',{month:'short',days:'numeric',timeZone:'UTC'});
+
+const RequestCell = ({prefs})=>{
+  if(!prefs || (!prefs.preferredDate && !prefs.instructions)){
+    return <div className="cell-muted">-</div>;
+  }
+  return(
+    <div className="cell-request" title={prefs.instructions || ''}>
+      {prefs.preferredDate && <span>Reschedule to {formatRequestDate(prefs.preferredDate)}</span>}
+      {prefs.instructions && <span className='req-note'>{prefs.instructions}</span>}
+    </div>
+  );
+};
+const ShipmentTable = ({ shipments, loading, isAdmin=false }) => {
   const navigate = useNavigate();
 
   if (loading) {
@@ -24,7 +38,7 @@ const ShipmentTable = ({ shipments, loading }) => {
       </div>
     );
   }
-
+  const rowClass = isAdmin ? 'shipment-row with-request' : 'ship-row';
   return (
     <div className="panel ship-table">
       <div className="ship-row head">
@@ -34,12 +48,13 @@ const ShipmentTable = ({ shipments, loading }) => {
         <div>Carrier</div>
         <div>Status</div>
         <div>Est. delivery</div>
+        {isAdmin && <div>Customer request</div>}
       </div>
       {shipments.map((s) => (
         <div
           key={s._id}
           onClick={() => navigate(`/shipments/${s._id}`)}
-          className="ship-row body"
+          className={`${rowClass} body`}
         >
           <div className="cell-primary">{s.trackingId}</div>
           <div className="cell-muted">{s.origin}</div>
@@ -47,6 +62,7 @@ const ShipmentTable = ({ shipments, loading }) => {
           <div className="cell-muted">{s.carrier}</div>
           <div><StatusBadge status={s.status} /></div>
           <div className="cell-muted">{formatDate(s.estimatedDelivery)}</div>
+          {isAdmin && <RequestCell prefs={s.deliveryPreferences}/>}
         </div>
       ))}
     </div>

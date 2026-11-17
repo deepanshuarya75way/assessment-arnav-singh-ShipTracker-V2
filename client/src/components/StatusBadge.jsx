@@ -1,7 +1,7 @@
 const STATUS_STYLES = {
   Pending: 'badge-pending',
   'In Transit': 'badge-transit',
-  Customs: 'badge-customs',
+  Customs: 'badge-customs', 'Out for Delivery':'badge-ofd',
   Delivered: 'badge-delivered',
 };
 

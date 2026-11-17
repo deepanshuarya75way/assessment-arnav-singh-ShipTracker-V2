@@ -8,10 +8,12 @@ import {
   addStatusUpdate,
   updateStatusEntry,
   deleteStatusEntry,
+  updateDeliveryPreferences,
 } from '../api/shipmentApi';
 import StatusBadge from '../components/StatusBadge';
 import Timeline from '../components/Timeline';
 import AddStatusUpdateForm from '../components/AddStatusUpdateForm';
+import DeliveryAmendmentPanel from '../components/DeliveryAmendmentPanel';
 import '../styles/app-theme.css';
 
 const ShipmentDetail = () => {
@@ -49,6 +51,31 @@ const ShipmentDetail = () => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Silent background refresh: keeps the page current without a loading flash,
+  // so a customer's reschedule lock engages (and dispatch sees new requests)
+  // shortly after the status changes, without anyone reloading.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      getShipmentById(id).then(setShipment).catch(() => {});
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [id]);
+
+  const handleSaveDelivery = async (payload) => {
+    try {
+      const updated = await updateDeliveryPreferences(id, payload);
+      setShipment(updated);
+    } catch (err) {
+      // 409 = dispatch moved it to "Out for Delivery" while the form was open.
+      // Refresh so the panel flips to its locked state, then surface the error.
+      if (err.response?.status === 409) {
+        getShipmentById(id).then(setShipment).catch(() => {});
+      }
+      throw err;
+    }
+  };
 
   const startEditingDetails = () => {
     setDetailsForm({
@@ -222,6 +249,8 @@ const ShipmentDetail = () => {
             </dl>
           )}
         </div>
+
+        <DeliveryAmendmentPanel shipment={shipment} isAdmin={isAdmin} onSave={handleSaveDelivery} />
 
         {/* Timeline card */}
         <div className="panel detail-card" style={{ marginBottom: 0 }}>

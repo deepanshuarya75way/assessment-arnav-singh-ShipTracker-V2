@@ -5,7 +5,7 @@ const STATUS_OPTIONS = ['Pending', 'In Transit', 'Customs', 'Delivered'];
 const STATUS_NODE_CLASS = {
   Pending: 'pending',
   'In Transit': 'transit',
-  Customs: 'customs',
+  Customs: 'customs','Out for Delivery':'badge-ofd',
   Delivered: 'delivered',
 };
 

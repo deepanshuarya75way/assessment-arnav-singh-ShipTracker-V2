@@ -10,6 +10,7 @@ const {
   addStatusUpdate,
   updateStatusEntry,
   deleteStatusEntry,
+  updateDeliveryPreferences,
 } = require('../controllers/shipmentController');
 const { protect, authorize } = require('../middleware/auth');
 const Shipment = require('../models/Shipment');
@@ -59,6 +60,19 @@ const statusHistoryUpdateValidation = [
   body('timestamp').optional().isISO8601().withMessage('timestamp must be a valid date'),
 ];
 
+const deliveryPreferencesValidation = [
+  body('preferredDate')
+    .optional({ values: 'falsy' })
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('preferredDate must be in YYYY-MM-DD format'),
+  body('instructions')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Delivery instructions must be under 500 characters'),
+];
+
 // Every route below requires a valid JWT.
 router.use(protect);
 
@@ -74,6 +88,11 @@ router.route('/:id')
   .get(getShipmentById) // admin: any. customer: own only (scoped inside controller)
   .put(authorize('admin'), updateShipmentValidation, updateShipment)
   .delete(authorize('admin'), deleteShipment);
+
+// Customer self-service: reschedule delivery / amend delivery instructions.
+// Open to the shipment's owner (scoped in the controller); locked once the
+// shipment is Out for Delivery.
+router.patch('/:id/delivery-preferences', deliveryPreferencesValidation, updateDeliveryPreferences);
 
 router.route('/:id/history')
   .post(authorize('admin'), statusHistoryValidation, addStatusUpdate);

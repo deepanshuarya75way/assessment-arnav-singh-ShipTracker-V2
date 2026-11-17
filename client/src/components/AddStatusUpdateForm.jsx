@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const STATUS_OPTIONS = ['Pending', 'In Transit', 'Customs', 'Delivered'];
+const STATUS_OPTIONS = ['Pending', 'In Transit', 'Customs', 'Out for Delivery', 'Delivered'];
 
 const AddStatusUpdateForm = ({ onAdd }) => {
   const [form, setForm] = useState({ status: 'In Transit', note: '' });

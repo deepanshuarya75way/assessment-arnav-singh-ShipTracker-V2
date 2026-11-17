@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const STATUS_VALUES = ['Pending', 'In Transit', 'Customs', 'Delivered'];
+const STATUS_VALUES = ['Pending', 'In Transit', 'Customs', 'Out for Delivery', 'Delivered'];
 
 // Embedded subdocument schema for a single timeline entry.
 // We deliberately do NOT disable _id here (Mongoose adds one automatically
@@ -73,6 +73,22 @@ const shipmentSchema = new mongoose.Schema(
     },
     estimatedDelivery: {
       type: Date,
+    },
+    // Customer self-service delivery amendment (reschedule + delivery notes).
+    // Embedded as a single subdocument (no _id) - dispatch reads it together
+    // with the shipment, and only the latest request matters operationally.
+    // Locked (see utils/deliveryAmendment.js) once status is 'Out for Delivery'.
+    deliveryPreferences: {
+      type: new mongoose.Schema(
+        {
+          preferredDate: { type: Date }, // stored at UTC midnight of the chosen day
+          instructions: { type: String, trim: true, maxlength: 500 }, // gate code, neighbour drop-off, etc.
+          updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+          updatedAt: { type: Date },
+        },
+        { _id: false }
+      ),
+      default: undefined,
     },
     // Embedded, not a separate collection - see the design note discussed
     // with the team: a shipment's timeline is always read alongside the

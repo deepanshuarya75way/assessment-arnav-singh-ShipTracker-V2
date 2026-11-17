@@ -1,6 +1,15 @@
 const { validationResult } = require('express-validator');
 const Shipment = require('../models/Shipment');
 const asyncHandler = require('../utils/asyncHandler');
+const { getAmendmentState, getEligibleDates, isLocked } = require('../utils/deliveryAmendment');
+
+// Attaches the computed `amendment` block (canAmend / reason / eligibleDates)
+// to a shipment response, so the client never has to re-implement the lock
+// or window rules - it just renders what the server says.
+const withAmendment = (shipment) => ({
+  ...shipment.toObject(),
+  amendment: getAmendmentState(shipment),
+});
 
 // Small helper: builds the base Mongo filter for list/detail queries based
 // on role. Centralizing this in one place means every read endpoint enforces
@@ -107,7 +116,7 @@ const getShipmentById = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Shipment not found' });
   }
 
-  res.status(200).json(shipment);
+  res.status(200).json(withAmendment(shipment));
 });
 
 // @route   PUT /api/shipments/:id
@@ -134,7 +143,7 @@ const updateShipment = asyncHandler(async (req, res) => {
   if (estimatedDelivery !== undefined) shipment.estimatedDelivery = estimatedDelivery;
 
   const updated = await shipment.save();
-  res.status(200).json(updated);
+  res.status(200).json(withAmendment(updated));
 });
 
 // @route   DELETE /api/shipments/:id
@@ -177,7 +186,7 @@ const addStatusUpdate = asyncHandler(async (req, res) => {
   shipment.status = status;
 
   const updated = await shipment.save();
-  res.status(201).json(updated);
+  res.status(201).json(withAmendment(updated));
 });
 
 // @route   PATCH /api/shipments/:id/history/:historyId
@@ -211,7 +220,7 @@ const updateStatusEntry = asyncHandler(async (req, res) => {
   if (latest) shipment.status = latest.status;
 
   const updated = await shipment.save();
-  res.status(200).json(updated);
+  res.status(200).json(withAmendment(updated));
 });
 
 // @route   DELETE /api/shipments/:id/history/:historyId
@@ -236,7 +245,71 @@ const deleteStatusEntry = asyncHandler(async (req, res) => {
   if (latest) shipment.status = latest.status;
 
   const updated = await shipment.save();
-  res.status(200).json(updated);
+  res.status(200).json(withAmendment(updated));
+});
+
+// ---- Customer delivery amendment ----
+
+// @route   PATCH /api/shipments/:id/delivery-preferences
+// @access  Private (owner customer, or admin). Locked once Out for Delivery.
+// Lets the customer pick a new delivery date from the eligible window and/or
+// leave delivery instructions (gate code, neighbour drop-off...). Dispatch
+// sees the result straight away because it's stored on the shipment itself.
+const updateDeliveryPreferences = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+  }
+
+  const preferredDate = req.body.preferredDate || undefined;
+  const instructions = typeof req.body.instructions === 'string' ? req.body.instructions.trim() : undefined;
+
+  if (!preferredDate && !instructions) {
+    return res.status(400).json({ message: 'Provide a new delivery date and/or delivery instructions' });
+  }
+
+  // Same ownership scoping as the read endpoints (404 for someone else's shipment).
+  const filter = scopeToOwner(req, { _id: req.params.id });
+  const shipment = await Shipment.findOne(filter);
+  if (!shipment) {
+    return res.status(404).json({ message: 'Shipment not found' });
+  }
+
+  if (isLocked(shipment.status)) {
+    return res.status(409).json({
+      message: getAmendmentState(shipment).reason,
+    });
+  }
+
+  if (preferredDate && !getEligibleDates().includes(preferredDate)) {
+    return res.status(400).json({ message: 'That date is not available for delivery. Please pick an eligible day.' });
+  }
+
+  // Keep whichever half the customer didn't touch this time.
+  const current = shipment.deliveryPreferences || {};
+  const next = {
+    preferredDate: preferredDate ? new Date(`${preferredDate}T00:00:00.000Z`) : current.preferredDate,
+    instructions: instructions !== undefined && instructions !== '' ? instructions : current.instructions,
+    updatedBy: req.user._id,
+    updatedAt: new Date(),
+  };
+
+  // Atomic guard: the status condition is part of the update itself, so if
+  // dispatch flips the shipment to "Out for Delivery" between the read above
+  // and this write, the amendment is rejected rather than slipping through.
+  const updated = await Shipment.findOneAndUpdate(
+    { _id: shipment._id, status: { $nin: ['Out for Delivery', 'Delivered'] } },
+    { $set: { deliveryPreferences: next } },
+    { new: true, runValidators: true }
+  );
+
+  if (!updated) {
+    return res.status(409).json({
+      message: 'This shipment is out for delivery, so it can no longer be changed.',
+    });
+  }
+
+  res.status(200).json(withAmendment(updated));
 });
 
 module.exports = {
@@ -249,4 +322,5 @@ module.exports = {
   addStatusUpdate,
   updateStatusEntry,
   deleteStatusEntry,
+  updateDeliveryPreferences,
 };

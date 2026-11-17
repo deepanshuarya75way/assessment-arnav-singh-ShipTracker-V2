@@ -47,3 +47,8 @@ export const deleteStatusEntry = async (id, historyId) => {
   const { data } = await api.delete(`/shipments/${id}/history/${historyId}`);
   return data;
 };
+
+export const updateDeliveryPreferences = async (id, payload) => {
+  const { data }= await api.patch('/shipments' + id + '/delivery-preferences', payload);
+  return data; 
+};
