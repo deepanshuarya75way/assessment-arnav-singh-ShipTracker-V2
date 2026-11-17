@@ -18,6 +18,8 @@ const Shipment = require('../models/Shipment');
 const router = express.Router();
 
 const createShipmentValidation = [
+  // normalizeEmail() matches how emails are stored at signup, so lookups line up.
+  body('customerEmail').isEmail().withMessage('A valid customer email is required').normalizeEmail(),
   body('origin').trim().notEmpty().withMessage('Origin is required'),
   body('destination').trim().notEmpty().withMessage('Destination is required'),
   body('carrier').trim().notEmpty().withMessage('Carrier is required'),
@@ -26,6 +28,7 @@ const createShipmentValidation = [
     .isISO8601()
     .withMessage('estimatedDelivery must be a valid date'),
 ];
+
 
 const updateShipmentValidation = [
   body('origin').optional().trim().notEmpty().withMessage('Origin cannot be empty'),
@@ -58,16 +61,16 @@ const statusHistoryUpdateValidation = [
 ];
 
 const deliveryPreferencesValidation = [
-  body('preferredDate')
-    .optional({ values: 'falsy' })
-    .matches(/^\d{4}-\d{2}-\d{2}$/)
-    .withMessage('preferredDate must be in YYYY-MM-DD format'),
   body('address')
     .optional({ values: 'falsy' })
     .isString()
     .trim()
     .isLength({ max: 200 })
     .withMessage('Address must be under 200 characters'),
+  body('preferredDate')
+    .optional({ values: 'falsy' })
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('preferredDate must be in YYYY-MM-DD format'),
   body('instructions')
     .optional({ values: 'falsy' })
     .isString()
@@ -79,12 +82,11 @@ const deliveryPreferencesValidation = [
 // Every route below requires a valid JWT.
 router.use(protect);
 
-// IMPORTANT: /summary must be registered BEFORE /:id, otherwise Express
-// would match "summary" as if it were an :id param on the GET /:id route.
+
 router.get('/summary', getShipmentSummary);
 
 router.route('/')
-  .post(createShipmentValidation, createShipment) // any authenticated user
+  .post(authorize('admin'), createShipmentValidation, createShipment) // admin only
   .get(getShipments); // admin: all, customer: own only (scoped inside controller)
 
 router.route('/:id')
@@ -92,9 +94,7 @@ router.route('/:id')
   .put(authorize('admin'), updateShipmentValidation, updateShipment)
   .delete(authorize('admin'), deleteShipment);
 
-// Customer self-service: reschedule delivery / amend delivery instructions.
-// Open to the shipment's owner (scoped in the controller); locked once the
-// shipment is Out for Delivery.
+
 router.patch('/:id/delivery-preferences', deliveryPreferencesValidation, updateDeliveryPreferences);
 
 router.route('/:id/history')

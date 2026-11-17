@@ -11,6 +11,7 @@ const CreateShipment = () => {
     destination: '',
     carrier: '',
     estimatedDelivery: '',
+    customerEmail: '',
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -48,12 +49,24 @@ const CreateShipment = () => {
             New shipment
           </h1>
           <p className="app-sub" style={{ marginBottom: '24px' }}>
-            A tracking ID will be generated automatically.
+            A tracking ID will be generated automatically. The shipment will appear on the customer's dashboard.
           </p>
 
           {error && <div className="alert-error">{error}</div>}
 
           <form onSubmit={handleSubmit}>
+            <div className="form-field">
+              <label>Customer email</label>
+              <input
+                type="email"
+                name="customerEmail"
+                required
+                value={form.customerEmail}
+                onChange={handleChange}
+                placeholder="customer@example.com"
+              />
+            </div>
+
             <div className="form-field">
               <label>Origin</label>
               <input

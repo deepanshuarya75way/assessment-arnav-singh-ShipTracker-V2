@@ -16,6 +16,9 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Summary only needs to load once on mount - it's not affected by the
+  // list filters, since the cards show overall counts regardless of what's
+  // currently being searched/filtered in the table below.
   useEffect(() => {
     getShipmentSummary()
       .then(setSummary)
@@ -72,9 +75,11 @@ const Dashboard = () => {
             </p>
           </div>
           <div className="app-actions">
-            <Link to="/shipments/new" className="btn-primary">
-              + New shipment
-            </Link>
+            {user?.role === 'admin' && (
+              <Link to="/shipments/new" className="btn-primary">
+                + New shipment
+              </Link>
+            )}
             <button onClick={logout} className="btn-secondary">
               Log out
             </button>

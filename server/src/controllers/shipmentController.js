@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const Shipment = require('../models/Shipment');
 const asyncHandler = require('../utils/asyncHandler');
+const User = require('../models/User');
 const { getAmendmentState, getEligibleDates, isLocked } = require('../utils/deliveryAmendment');
 
 // Attaches the computed `amendment` block (canAmend / reason / eligibleDates)
@@ -30,11 +31,19 @@ const createShipment = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
   }
 
-  const { origin, destination, carrier, estimatedDelivery, trackingId } = req.body;
+  const { origin, destination, carrier, estimatedDelivery, trackingId, customerEmail } = req.body;
+
+  // Only admins create shipments (enforced on the route). The admin assigns it
+  // to a customer by email - that customer becomes the owner and sees it on
+  // their own dashboard.
+  const customer = await User.findOne({ email: customerEmail });
+  if (!customer) {
+    return res.status(404).json({ message: 'No customer found with that email' });
+  }
 
   const shipment = await Shipment.create({
     trackingId,
-    owner: req.user._id,
+    owner: customer._id,
     origin,
     destination,
     carrier,
@@ -238,6 +247,9 @@ const deleteStatusEntry = asyncHandler(async (req, res) => {
 
   entry.deleteOne();
 
+  // Re-sync shipment.status to whatever is now the latest remaining entry.
+  // If the deleted entry was the only one, statusHistory is empty and we
+  // leave shipment.status as-is rather than guessing.
   const latest = [...shipment.statusHistory].sort((a, b) => b.timestamp - a.timestamp)[0];
   if (latest) shipment.status = latest.status;
 
@@ -245,7 +257,13 @@ const deleteStatusEntry = asyncHandler(async (req, res) => {
   res.status(200).json(withAmendment(updated));
 });
 
+// ---- Customer delivery amendment ----
 
+// @route   PATCH /api/shipments/:id/delivery-preferences
+// @access  Private (owner customer, or admin). Locked once Out for Delivery.
+// Lets the customer pick a new delivery date from the eligible window and/or
+// leave delivery instructions (gate code, neighbour drop-off...). Dispatch
+// sees the result straight away because it's stored on the shipment itself.
 const updateDeliveryPreferences = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -261,6 +279,7 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Provide a new date, delivery instructions and/or address' });
   }
 
+  // Same ownership scoping as the read endpoints (404 for someone else's shipment).
   const filter = scopeToOwner(req, { _id: req.params.id });
   const shipment = await Shipment.findOne(filter);
   if (!shipment) {
@@ -277,6 +296,7 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'That date is not available for delivery. Please pick an eligible day.' });
   }
 
+  // Keep whichever half the customer didn't touch this time.
   const current = shipment.deliveryPreferences || {};
   const next = {
     preferredDate: preferredDate ? new Date(`${preferredDate}T00:00:00.000Z`) : current.preferredDate,
@@ -286,6 +306,9 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
     updatedAt: new Date(),
   };
 
+  // Atomic guard: the status condition is part of the update itself, so if
+  // dispatch flips the shipment to "Out for Delivery" between the read above
+  // and this write, the amendment is rejected rather than slipping through.
   const updated = await Shipment.findOneAndUpdate(
     { _id: shipment._id, status: { $nin: ['Out for Delivery', 'Delivered'] } },
     { $set: { deliveryPreferences: next } },

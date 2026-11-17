@@ -29,7 +29,7 @@ function App() {
           <Route
             path="/shipments/new"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <CreateShipment />
               </ProtectedRoute>
             }
