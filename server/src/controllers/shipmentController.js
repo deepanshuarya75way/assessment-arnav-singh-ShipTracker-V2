@@ -4,18 +4,11 @@ const asyncHandler = require('../utils/asyncHandler');
 const User = require('../models/User');
 const { getAmendmentState, getEligibleDates, isLocked } = require('../utils/deliveryAmendment');
 
-// Attaches the computed `amendment` block (canAmend / reason / eligibleDates)
-// to a shipment response, so the client never has to re-implement the lock
-// or window rules - it just renders what the server says.
 const withAmendment = (shipment) => ({
   ...shipment.toObject(),
   amendment: getAmendmentState(shipment),
 });
 
-// Small helper: builds the base Mongo filter for list/detail queries based
-// on role. Centralizing this in one place means every read endpoint enforces
-// "customers only see their own shipments" the same way - there's no route
-// where someone could forget to scope the query.
 const scopeToOwner = (req, filter = {}) => {
   if (req.user.role !== 'admin') {
     filter.owner = req.user._id;
@@ -23,8 +16,7 @@ const scopeToOwner = (req, filter = {}) => {
   return filter;
 };
 
-// @route   POST /api/shipments
-// @access  Private (any authenticated user)
+
 const createShipment = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -61,9 +53,6 @@ const createShipment = asyncHandler(async (req, res) => {
   res.status(201).json(shipment);
 });
 
-// @route   GET /api/shipments
-// @access  Private (admin: all shipments. customer: only their own)
-// Supports: ?status=In+Transit  ?origin=shanghai  ?destination=la  ?search=ST-2026
 const getShipments = asyncHandler(async (req, res) => {
   const { status, origin, destination, search } = req.query;
 
@@ -74,8 +63,7 @@ const getShipments = asyncHandler(async (req, res) => {
   if (origin) filter.origin = { $regex: origin, $options: 'i' };
   if (destination) filter.destination = { $regex: destination, $options: 'i' };
 
-  // Free-text search across a few fields at once, for a single dashboard
-  // search box rather than separate inputs per field.
+
   if (search) {
     filter.$or = [
       { trackingId: { $regex: search, $options: 'i' } },
@@ -89,9 +77,6 @@ const getShipments = asyncHandler(async (req, res) => {
   res.status(200).json(shipments);
 });
 
-// @route   GET /api/shipments/summary
-// @access  Private (admin: across all shipments. customer: only their own)
-// Powers the dashboard's summary cards (total / in-transit / delayed).
 const getShipmentSummary = asyncHandler(async (req, res) => {
   const filter = scopeToOwner(req);
 
@@ -128,11 +113,6 @@ const getShipmentById = asyncHandler(async (req, res) => {
   res.status(200).json(withAmendment(shipment));
 });
 
-// @route   PUT /api/shipments/:id
-// @access  Private/Admin
-// Updates core shipment details only - NOT status. Status changes go
-// through the /history endpoints below, so every status change is always
-// captured as a timeline entry rather than silently overwritten.
 const updateShipment = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -167,12 +147,7 @@ const deleteShipment = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Shipment deleted', _id: req.params.id });
 });
 
-// ---- Status history sub-resource ----
 
-// @route   POST /api/shipments/:id/history
-// @access  Private/Admin
-// Adds a new timeline entry AND syncs shipment.status to match it, since
-// the latest history entry always represents the shipment's current status.
 const addStatusUpdate = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -198,8 +173,6 @@ const addStatusUpdate = asyncHandler(async (req, res) => {
   res.status(201).json(withAmendment(updated));
 });
 
-// @route   PATCH /api/shipments/:id/history/:historyId
-// @access  Private/Admin
 const updateStatusEntry = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -211,8 +184,7 @@ const updateStatusEntry = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Shipment not found' });
   }
 
-  // .id() is Mongoose's built-in lookup for a subdocument by its _id -
-  // this is exactly why we kept _id enabled on statusUpdateSchema.
+
   const entry = shipment.statusHistory.id(req.params.historyId);
   if (!entry) {
     return res.status(404).json({ message: 'Status history entry not found' });
@@ -223,8 +195,6 @@ const updateStatusEntry = asyncHandler(async (req, res) => {
   if (note !== undefined) entry.note = note;
   if (timestamp !== undefined) entry.timestamp = timestamp;
 
-  // Keep shipment.status in sync: recompute it as whichever entry is now
-  // chronologically most recent, in case an edit changed the ordering.
   const latest = [...shipment.statusHistory].sort((a, b) => b.timestamp - a.timestamp)[0];
   if (latest) shipment.status = latest.status;
 
@@ -232,8 +202,7 @@ const updateStatusEntry = asyncHandler(async (req, res) => {
   res.status(200).json(withAmendment(updated));
 });
 
-// @route   DELETE /api/shipments/:id/history/:historyId
-// @access  Private/Admin
+
 const deleteStatusEntry = asyncHandler(async (req, res) => {
   const shipment = await Shipment.findById(req.params.id);
   if (!shipment) {
@@ -247,9 +216,6 @@ const deleteStatusEntry = asyncHandler(async (req, res) => {
 
   entry.deleteOne();
 
-  // Re-sync shipment.status to whatever is now the latest remaining entry.
-  // If the deleted entry was the only one, statusHistory is empty and we
-  // leave shipment.status as-is rather than guessing.
   const latest = [...shipment.statusHistory].sort((a, b) => b.timestamp - a.timestamp)[0];
   if (latest) shipment.status = latest.status;
 
@@ -257,13 +223,8 @@ const deleteStatusEntry = asyncHandler(async (req, res) => {
   res.status(200).json(withAmendment(updated));
 });
 
-// ---- Customer delivery amendment ----
 
-// @route   PATCH /api/shipments/:id/delivery-preferences
-// @access  Private (owner customer, or admin). Locked once Out for Delivery.
-// Lets the customer pick a new delivery date from the eligible window and/or
-// leave delivery instructions (gate code, neighbour drop-off...). Dispatch
-// sees the result straight away because it's stored on the shipment itself.
+
 const updateDeliveryPreferences = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -279,7 +240,6 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Provide a new date, delivery instructions and/or address' });
   }
 
-  // Same ownership scoping as the read endpoints (404 for someone else's shipment).
   const filter = scopeToOwner(req, { _id: req.params.id });
   const shipment = await Shipment.findOne(filter);
   if (!shipment) {
@@ -292,7 +252,7 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
     });
   }
 
-  if (preferredDate && !getEligibleDates().includes(preferredDate)) {
+  if (preferredDate && !getEligibleDates(new Date(), shipment.estimatedDelivery).includes(preferredDate)) {
     return res.status(400).json({ message: 'That date is not available for delivery. Please pick an eligible day.' });
   }
 
@@ -306,9 +266,6 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
     updatedAt: new Date(),
   };
 
-  // Atomic guard: the status condition is part of the update itself, so if
-  // dispatch flips the shipment to "Out for Delivery" between the read above
-  // and this write, the amendment is rejected rather than slipping through.
   const updated = await Shipment.findOneAndUpdate(
     { _id: shipment._id, status: { $nin: ['Out for Delivery', 'Delivered'] } },
     { $set: { deliveryPreferences: next } },
