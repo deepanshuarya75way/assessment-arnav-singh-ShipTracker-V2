@@ -82,7 +82,8 @@ const shipmentSchema = new mongoose.Schema(
       type: new mongoose.Schema(
         {
           preferredDate: { type: Date }, // stored at UTC midnight of the chosen day
-          instructions: { type: String, trim: true, maxlength: 500 }, // gate code, neighbour drop-off, etc.
+          instructions: { type: String, trim: true, maxlength: 500 },
+          address: { type: String, trim:true, maxlength:200}, // gate code, neighbour drop-off, etc.
           updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
           updatedAt: { type: Date },
         },
@@ -90,18 +91,11 @@ const shipmentSchema = new mongoose.Schema(
       ),
       default: undefined,
     },
-    // Embedded, not a separate collection - see the design note discussed
-    // with the team: a shipment's timeline is always read alongside the
-    // shipment itself (detail page = one query), never queried independently
-    // across shipments, so embedding avoids an unnecessary populate()/join.
     statusHistory: [statusUpdateSchema],
   },
   { timestamps: true } // createdAt acts as "date created", updatedAt as "last updated"
 );
 
-// Auto-generate a human-readable tracking ID if the client didn't supply one,
-// e.g. "ST-2026-4F8A2C". Runs before validation so the `required: true` /
-// `unique: true` checks above still apply to the generated value.
 shipmentSchema.pre('validate', function (next) {
   if (!this.trackingId) {
     const year = new Date().getFullYear();
@@ -111,8 +105,7 @@ shipmentSchema.pre('validate', function (next) {
   next();
 });
 
-// Index on owner: every customer-scoped list query filters by this field,
-// so it should be indexed rather than scanning the whole collection.
+
 shipmentSchema.index({ owner: 1 });
 // Index on status: dashboard filtering/summary counts ("in-transit count")
 // query by status frequently.

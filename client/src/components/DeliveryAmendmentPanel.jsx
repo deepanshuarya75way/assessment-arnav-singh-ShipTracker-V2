@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import DeliveryCalendar from './DelivertCalendar';
+import DeliveryCalendar from './DeliveryCalendar';
 
 const MAX_NOTE = 500;
 
@@ -19,6 +19,12 @@ const CurrentRequest = ({ prefs }) => (
         <dd>{formatDay(prefs.preferredDate)}</dd>
       </>
     )}
+    {prefs.address && (
+      <>
+        <dt>Delivery address</dt>
+        <dd>{prefs.address}</dd>
+      </>
+    )}
     {prefs.instructions && (
       <>
         <dt>Delivery instructions</dt>
@@ -34,6 +40,8 @@ const CurrentRequest = ({ prefs }) => (
   </dl>
 );
 
+// Customers: reschedule + instructions form (locked once Out for Delivery).
+// Admins (dispatch): read-only view of whatever the customer requested.
 const DeliveryAmendmentPanel = ({ shipment, isAdmin, onSave }) => {
   const prefs = shipment.deliveryPreferences;
   const amendment = shipment.amendment || { canAmend: false, eligibleDates: [] };
@@ -41,11 +49,13 @@ const DeliveryAmendmentPanel = ({ shipment, isAdmin, onSave }) => {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState('');
   const [note, setNote] = useState('');
+  const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const hasRequest = prefs && (prefs.preferredDate || prefs.instructions);
+  const hasRequest = prefs && (prefs.preferredDate || prefs.instructions || prefs.address);
 
+  // Dispatch view
   if (isAdmin) {
     return (
       <div className="panel detail-card">
@@ -65,6 +75,7 @@ const DeliveryAmendmentPanel = ({ shipment, isAdmin, onSave }) => {
   const openForm = () => {
     setDate('');
     setNote(prefs?.instructions || '');
+    setAddress(prefs?.address || '');
     setError('');
     setOpen(true);
   };
@@ -72,8 +83,8 @@ const DeliveryAmendmentPanel = ({ shipment, isAdmin, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!date && !note.trim()) {
-      setError('Pick a new delivery date and/or add delivery instructions.');
+    if (!date && !note.trim() && !address.trim()) {
+      setError('Pick a new date, or add an address or delivery instructions.');
       return;
     }
     setSaving(true);
@@ -81,6 +92,7 @@ const DeliveryAmendmentPanel = ({ shipment, isAdmin, onSave }) => {
       const payload = {};
       if (date) payload.preferredDate = date;
       if (note.trim()) payload.instructions = note.trim();
+      if (address.trim()) payload.address = address.trim();
       await onSave(payload);
       setOpen(false);
     } catch (err) {
@@ -122,6 +134,20 @@ const DeliveryAmendmentPanel = ({ shipment, isAdmin, onSave }) => {
               New delivery date <span className="optional">(optional)</span>
             </label>
             <DeliveryCalendar eligibleDates={amendment.eligibleDates} value={date} onChange={setDate} />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="delivery-address">
+              Delivery address <span className="optional">(street, landmark, pincode)</span>
+            </label>
+            <input
+              id="delivery-address"
+              type="text"
+              maxLength={200}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="e.g. 12 MG Road, near City Mall, 560001"
+            />
           </div>
 
           <div className="form-field">

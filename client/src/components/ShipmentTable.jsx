@@ -10,21 +10,25 @@ const formatDate = (dateStr) => {
   });
 };
 
-const formatRequestDate = (dateStr)=>
-  new Date(dateStr).toLocaleDateString('en-US',{month:'short',days:'numeric',timeZone:'UTC'});
+// preferredDate is stored at UTC midnight - format in UTC to avoid off-by-one.
+const formatRequestDate = (dateStr) =>
+  new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-const RequestCell = ({prefs})=>{
-  if(!prefs || (!prefs.preferredDate && !prefs.instructions)){
-    return <div className="cell-muted">-</div>;
+// Dispatch-only cell: what the customer asked for (new date and/or notes).
+const RequestCell = ({ prefs }) => {
+  if (!prefs || (!prefs.preferredDate && !prefs.instructions && !prefs.address)) {
+    return <div className="cell-muted">—</div>;
   }
-  return(
+  return (
     <div className="cell-request" title={prefs.instructions || ''}>
-      {prefs.preferredDate && <span>Reschedule to {formatRequestDate(prefs.preferredDate)}</span>}
-      {prefs.instructions && <span className='req-note'>{prefs.instructions}</span>}
+      {prefs.preferredDate && <span>Reschedule → {formatRequestDate(prefs.preferredDate)}</span>}
+      {prefs.address && <span className="req-note">{prefs.address}</span>}
+      {prefs.instructions && <span className="req-note">{prefs.instructions}</span>}
     </div>
   );
 };
-const ShipmentTable = ({ shipments, loading, isAdmin=false }) => {
+
+const ShipmentTable = ({ shipments, loading, isAdmin = false }) => {
   const navigate = useNavigate();
 
   if (loading) {
@@ -38,10 +42,12 @@ const ShipmentTable = ({ shipments, loading, isAdmin=false }) => {
       </div>
     );
   }
-  const rowClass = isAdmin ? 'shipment-row with-request' : 'ship-row';
+
+  const rowClass = isAdmin ? 'ship-row with-request' : 'ship-row';
+
   return (
     <div className="panel ship-table">
-      <div className="ship-row head">
+      <div className={`${rowClass} head`}>
         <div>Tracking ID</div>
         <div>Origin</div>
         <div>Destination</div>
@@ -62,7 +68,7 @@ const ShipmentTable = ({ shipments, loading, isAdmin=false }) => {
           <div className="cell-muted">{s.carrier}</div>
           <div><StatusBadge status={s.status} /></div>
           <div className="cell-muted">{formatDate(s.estimatedDelivery)}</div>
-          {isAdmin && <RequestCell prefs={s.deliveryPreferences}/>}
+          {isAdmin && <RequestCell prefs={s.deliveryPreferences} />}
         </div>
       ))}
     </div>

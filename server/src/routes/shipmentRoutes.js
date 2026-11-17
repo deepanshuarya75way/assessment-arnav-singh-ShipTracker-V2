@@ -27,9 +27,6 @@ const createShipmentValidation = [
     .withMessage('estimatedDelivery must be a valid date'),
 ];
 
-// Same field rules as create, but every field is optional since this is
-// a partial update (PUT here behaves like a PATCH would - the client only
-// sends the fields it wants to change).
 const updateShipmentValidation = [
   body('origin').optional().trim().notEmpty().withMessage('Origin cannot be empty'),
   body('destination').optional().trim().notEmpty().withMessage('Destination cannot be empty'),
@@ -65,6 +62,12 @@ const deliveryPreferencesValidation = [
     .optional({ values: 'falsy' })
     .matches(/^\d{4}-\d{2}-\d{2}$/)
     .withMessage('preferredDate must be in YYYY-MM-DD format'),
+  body('address')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Address must be under 200 characters'),
   body('instructions')
     .optional({ values: 'falsy' })
     .isString()

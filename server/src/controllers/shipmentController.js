@@ -238,9 +238,6 @@ const deleteStatusEntry = asyncHandler(async (req, res) => {
 
   entry.deleteOne();
 
-  // Re-sync shipment.status to whatever is now the latest remaining entry.
-  // If the deleted entry was the only one, statusHistory is empty and we
-  // leave shipment.status as-is rather than guessing.
   const latest = [...shipment.statusHistory].sort((a, b) => b.timestamp - a.timestamp)[0];
   if (latest) shipment.status = latest.status;
 
@@ -248,13 +245,7 @@ const deleteStatusEntry = asyncHandler(async (req, res) => {
   res.status(200).json(withAmendment(updated));
 });
 
-// ---- Customer delivery amendment ----
 
-// @route   PATCH /api/shipments/:id/delivery-preferences
-// @access  Private (owner customer, or admin). Locked once Out for Delivery.
-// Lets the customer pick a new delivery date from the eligible window and/or
-// leave delivery instructions (gate code, neighbour drop-off...). Dispatch
-// sees the result straight away because it's stored on the shipment itself.
 const updateDeliveryPreferences = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -264,11 +255,12 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
   const preferredDate = req.body.preferredDate || undefined;
   const instructions = typeof req.body.instructions === 'string' ? req.body.instructions.trim() : undefined;
 
-  if (!preferredDate && !instructions) {
-    return res.status(400).json({ message: 'Provide a new delivery date and/or delivery instructions' });
+  const address = typeof req.body.address === 'string' ? req.body.address.trim() : undefined;
+
+  if (!preferredDate && !instructions && !address) {
+    return res.status(400).json({ message: 'Provide a new date, delivery instructions and/or address' });
   }
 
-  // Same ownership scoping as the read endpoints (404 for someone else's shipment).
   const filter = scopeToOwner(req, { _id: req.params.id });
   const shipment = await Shipment.findOne(filter);
   if (!shipment) {
@@ -285,18 +277,15 @@ const updateDeliveryPreferences = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'That date is not available for delivery. Please pick an eligible day.' });
   }
 
-  // Keep whichever half the customer didn't touch this time.
   const current = shipment.deliveryPreferences || {};
   const next = {
     preferredDate: preferredDate ? new Date(`${preferredDate}T00:00:00.000Z`) : current.preferredDate,
     instructions: instructions !== undefined && instructions !== '' ? instructions : current.instructions,
+    address: address || current.address,
     updatedBy: req.user._id,
     updatedAt: new Date(),
   };
 
-  // Atomic guard: the status condition is part of the update itself, so if
-  // dispatch flips the shipment to "Out for Delivery" between the read above
-  // and this write, the amendment is rejected rather than slipping through.
   const updated = await Shipment.findOneAndUpdate(
     { _id: shipment._id, status: { $nin: ['Out for Delivery', 'Delivered'] } },
     { $set: { deliveryPreferences: next } },
