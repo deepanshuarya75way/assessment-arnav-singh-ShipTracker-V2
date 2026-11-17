@@ -7,10 +7,6 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
-// Request interceptor: reads the token from localStorage and attaches it
-// as a Bearer header on every outgoing request. This means individual
-// components/pages never have to think about auth headers - they just
-// call api.get(...) and it's handled.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('shiptrack_token');
   if (token) {
