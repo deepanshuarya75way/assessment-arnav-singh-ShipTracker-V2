@@ -49,12 +49,8 @@ const ShipmentDetail = () => {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Silent background refresh: keeps the page current without a loading flash,
-  // so a customer's reschedule lock engages (and dispatch sees new requests)
-  // shortly after the status changes, without anyone reloading.
   useEffect(() => {
     const timer = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
@@ -68,8 +64,6 @@ const ShipmentDetail = () => {
       const updated = await updateDeliveryPreferences(id, payload);
       setShipment(updated);
     } catch (err) {
-      // 409 = dispatch moved it to "Out for Delivery" while the form was open.
-      // Refresh so the panel flips to its locked state, then surface the error.
       if (err.response?.status === 409) {
         getShipmentById(id).then(setShipment).catch(() => {});
       }
@@ -82,7 +76,6 @@ const ShipmentDetail = () => {
       origin: shipment.origin,
       destination: shipment.destination,
       carrier: shipment.carrier,
-      // <input type="date"> needs YYYY-MM-DD, not a full ISO timestamp
       estimatedDelivery: shipment.estimatedDelivery
         ? shipment.estimatedDelivery.slice(0, 10)
         : '',

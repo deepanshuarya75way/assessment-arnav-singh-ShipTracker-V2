@@ -74,16 +74,13 @@ const shipmentSchema = new mongoose.Schema(
     estimatedDelivery: {
       type: Date,
     },
-    // Customer self-service delivery amendment (reschedule + delivery notes).
-    // Embedded as a single subdocument (no _id) - dispatch reads it together
-    // with the shipment, and only the latest request matters operationally.
-    // Locked (see utils/deliveryAmendment.js) once status is 'Out for Delivery'.
+
     deliveryPreferences: {
       type: new mongoose.Schema(
         {
-          preferredDate: { type: Date }, // stored at UTC midnight of the chosen day
+          preferredDate: { type: Date }, 
           instructions: { type: String, trim: true, maxlength: 500 },
-          address: { type: String, trim:true, maxlength:200}, // gate code, neighbour drop-off, etc.
+          address: { type: String, trim:true, maxlength:200}, 
           updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
           updatedAt: { type: Date },
         },
@@ -93,7 +90,7 @@ const shipmentSchema = new mongoose.Schema(
     },
     statusHistory: [statusUpdateSchema],
   },
-  { timestamps: true } // createdAt acts as "date created", updatedAt as "last updated"
+  { timestamps: true } 
 );
 
 shipmentSchema.pre('validate', function (next) {
